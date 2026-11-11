@@ -30,6 +30,9 @@ To move notes to another device, use **Export notes**, then **Import notes** on 
 npx http-server -p 8080
 ```
 
+## Logo
+`icons/logo.svg` is the master file: a page whose folded corner is a floppy golden dog's ear. After editing it, run `node icons/make-icons.mjs` (Windows, uses Edge) to regenerate `apple-touch-icon.png`, `logo-512.png` and `DogEar.ico`.
+
 ## Windows app
 `windows/DogEar.Desktop.sln` wraps this same code as a desktop app. Books and notes stay on each PC. See [windows/README.md](windows/README.md).
 

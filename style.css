@@ -14,7 +14,8 @@ button:focus-visible, .btn:focus-within, .book:focus-visible { outline: 2px soli
 /* ---------- shelf ---------- */
 #library { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
 #library header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 28px; }
-#library h1 { margin: 0 auto 0 0; font: 600 30px Georgia, serif; }
+#library h1 { margin: 0 auto 0 4px; font: 600 30px Georgia, serif; }
+#library .logo { display: block; filter: drop-shadow(0 4px 8px #0006); }
 #library h1 small { display: block; font: italic 400 15px Georgia, serif; color: #b9ad9c; }
 #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 40px 24px; }
 .empty { color: #b9ad9c; grid-column: 1 / -1; }

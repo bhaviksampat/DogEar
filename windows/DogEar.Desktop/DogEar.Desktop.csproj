@@ -9,6 +9,8 @@
     <AssemblyName>DogEar</AssemblyName>
     <Product>Dog-Ear</Product>
     <Version>1.0.0</Version>
+    <!-- exe, taskbar and window icon (regenerate from icons/logo.svg with: node icons/make-icons.mjs) -->
+    <ApplicationIcon>..\..\icons\DogEar.ico</ApplicationIcon>
     <!-- WebView2's package also ships a WPF control we don't use; its WindowsBase reference warning is harmless -->
     <NoWarn>$(NoWarn);MSB3277</NoWarn>
   </PropertyGroup>
@@ -33,6 +35,7 @@
     <Content Include="..\..\index.html;..\..\app.js;..\..\style.css" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\books\**\*" LinkBase="web\books" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\vendor\**\*" LinkBase="web\vendor" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\icons\logo.svg;..\..\icons\apple-touch-icon.png" LinkBase="web\icons" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
