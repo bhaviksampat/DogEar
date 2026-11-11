@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+<section id="library">
+  <header>
+    <h1>My Shelf</h1>
+    <label class="btn">+ Add PDF<input type="file" id="upload" accept="application/pdf" multiple hidden></label>
+    <button id="exportBtn" title="Download all your notes as a backup file">Export notes</button>
+    <label class="btn" title="Restore notes from a backup file">Import notes<input type="file" id="importFile" accept="application/json" hidden></label>
+  </header>
+  <div id="grid"></div>
+</section>
+
+<section id="reader" hidden>
+  <div id="toolbar">
+    <button id="back" title="Back to shelf">← Shelf</button>
+    <span id="title"></span>
+    <div class="tools">
+      <button data-tool="read" title="Read / turn pages (R)">✋</button>
+      <button data-tool="pen" title="Pen (P)">✒️</button>
+      <button data-tool="hl" title="Highlighter (H)">🖍️</button>
+      <button data-tool="erase" title="Eraser (E)">🧽</button>
+      <button data-tool="sticky" title="Sticky note (S)">🗒️</button>
+      <input type="color" id="color" title="Colour">
+    </div>
+    <button id="undo" title="Undo (Ctrl+Z)">↶</button>
+    <button id="zoomOut" title="Zoom out">−</button>
+    <button id="zoomIn" title="Zoom in">+</button>
+    <button id="bookmark" title="Fold the corner (B)">🔖</button>
+    <button id="notesBtn" title="All notes & bookmarks (N)">Notes</button>
+  </div>
+  <div id="stage" data-tool="read"><div id="spread"></div></div>
+  <div id="footer">
+    <input type="range" id="seek" min="1" value="1" aria-label="Go to page">
+    <span id="pageLabel"></span>
+  </div>
+  <aside id="notesPanel" hidden></aside>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
