@@ -18,7 +18,16 @@ Or open `DogEar.Desktop.sln` in Visual Studio and press F5.
 ```bash
 dotnet publish DogEar.Desktop -c Release -o publish
 ```
-`publish\` then holds `DogEar.exe` and a `web\` folder. Zip that folder and send it, and users unzip it and run `DogEar.exe`.
+`publish\` then holds `DogEar.exe`, `install.ps1` and a `web\` folder. Zip that folder and send it.
+
+## Install on a PC
+Unzip it, then in that folder run:
+```bash
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+This copies the app to `%LOCALAPPDATA%\Programs\DogEar` and adds **Dog-Ear** to the Start Menu and the desktop. No admin rights are needed.
+Run it again from a newer copy to update. To remove the app, run `install.ps1 -Uninstall` from `%LOCALAPPDATA%\Programs\DogEar`. Books and notes in `%LOCALAPPDATA%\DogEar` are kept either way.
+
 No .NET install is needed. The only requirement is the WebView2 Runtime, which comes with Windows 11 and up-to-date Windows 10.
 If it's missing, the app says so and links to the installer.
 

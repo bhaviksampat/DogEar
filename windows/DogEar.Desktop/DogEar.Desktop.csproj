@@ -36,6 +36,8 @@
     <Content Include="..\..\books\**\*" LinkBase="web\books" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\vendor\**\*" LinkBase="web\vendor" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\icons\logo.svg;..\..\icons\apple-touch-icon.png" LinkBase="web\icons" CopyToOutputDirectory="PreserveNewest" />
+    <!-- ships next to DogEar.exe so whoever receives the published folder can install it -->
+    <Content Include="..\install.ps1" Link="install.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
