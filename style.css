@@ -15,6 +15,7 @@ button:focus-visible, .btn:focus-within, .book:focus-visible { outline: 2px soli
 #library { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
 #library header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 28px; }
 #library h1 { margin: 0 auto 0 0; font: 600 30px Georgia, serif; }
+#library h1 small { display: block; font: italic 400 15px Georgia, serif; color: #b9ad9c; }
 #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 40px 24px; }
 .empty { color: #b9ad9c; grid-column: 1 / -1; }
 .book { position: relative; cursor: pointer; }
@@ -43,24 +44,31 @@ button:focus-visible, .btn:focus-within, .book:focus-visible { outline: 2px soli
   background: radial-gradient(ellipse at center, #3b332b, #1c1814);
 }
 #stage.zoomed { touch-action: auto; }
-#spread { margin: auto; display: flex; filter: drop-shadow(0 14px 22px #0009); }
+#stage:not(.zoomed) { overflow: hidden; } /* a turning page bulges out in 3D; don't let it add scrollbars */
+#spread { margin: auto; display: flex; position: relative; filter: drop-shadow(0 14px 22px #0009); }
 .page { position: relative; background: #fff; }
 .page canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .ink { mix-blend-mode: multiply; touch-action: none; cursor: crosshair; }
 #stage[data-tool=read] .ink { pointer-events: none; }
 #stage[data-tool=sticky] .ink { cursor: copy; }
+#stage[data-tool=listen] .ink { cursor: pointer; }
+#rate { font: inherit; color: inherit; background: #3a332c; border: 1px solid #4d443a; border-radius: 8px; padding: 5px 4px; }
+
+/* read-aloud: the sentence being spoken */
+.speak { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.speak i { position: absolute; background: #6cb8ff66; border-radius: 3px; mix-blend-mode: multiply; }
 
 /* warm paper tint + spine shadow in two-page view */
 .page::before { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; mix-blend-mode: multiply; background: #faf4e6; }
-.page:first-child:not(:only-child)::before { background: linear-gradient(to left, #0003, transparent 7%), #faf4e6; }
-.page:last-child:not(:only-child)::before { background: linear-gradient(to right, #0003, transparent 7%), #faf4e6; }
+.page.left::before { background: linear-gradient(to left, #0003, transparent 7%), #faf4e6; }
+.page.right::before { background: linear-gradient(to right, #0003, transparent 7%), #faf4e6; }
 
 /* folded corner = bookmark */
 .page.marked::after {
   content: ''; position: absolute; top: 0; right: 0; z-index: 4; width: 38px; height: 38px; pointer-events: none;
   background: linear-gradient(225deg, var(--fold) 50%, #e6dcc6 50%); box-shadow: -3px 3px 5px #0004;
 }
-.page.marked:first-child:not(:only-child)::after { right: auto; left: 0; background: linear-gradient(135deg, var(--fold) 50%, #e6dcc6 50%); box-shadow: 3px 3px 5px #0004; }
+.page.marked.left::after { right: auto; left: 0; background: linear-gradient(135deg, var(--fold) 50%, #e6dcc6 50%); box-shadow: 3px 3px 5px #0004; }
 
 /* sticky notes */
 .notes { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
@@ -78,7 +86,18 @@ button:focus-visible, .btn:focus-within, .book:focus-visible { outline: 2px soli
 .sticky.min textarea, .sticky.min .x { display: none; }
 .sticky.min .grip { height: 34px; }
 
-/* page turn */
+/* page flip: a sheet with the old page on the front and the new page on the back */
+.flip { position: absolute; z-index: 5; transform-style: preserve-3d; pointer-events: none; }
+.face { position: absolute; inset: 0; backface-visibility: hidden; }
+.face.back { transform: rotateY(180deg); }
+.face::after { /* the sheet darkens as it stands up and catches less light */
+  content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  background: linear-gradient(to right, #0000, #0004 50%, #0000); animation: shade .65s ease-in-out forwards;
+}
+@keyframes shade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+.sheet-back { background: #f4ecda; }
+
+/* simple slide, used where a flip doesn't apply (cover → first spread, zoomed in) */
 .turn-next { animation: turnNext .35s ease-out; }
 .turn-prev { animation: turnPrev .35s ease-out; }
 @keyframes turnNext { from { transform: translateX(50px) rotateY(-10deg); opacity: .15; } }

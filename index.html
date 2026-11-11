@@ -3,17 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shelf</title>
+<title>Dog-Ear</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- PDF.js 3.11.174, bundled so the app works offline (from cdnjs, sha512 checked against its published SRI) -->
+<script src="vendor/pdfjs/pdf.min.js"></script>
 </head>
 <body>
 
 <section id="library">
   <header>
-    <h1>My Shelf</h1>
+    <h1>Dog-Ear <small>read · scribble · fold the corner</small></h1>
     <label class="btn">+ Add PDF<input type="file" id="upload" accept="application/pdf" multiple hidden></label>
     <button id="exportBtn" title="Download all your notes as a backup file">Export notes</button>
     <label class="btn" title="Restore notes from a backup file">Import notes<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -31,8 +33,14 @@
       <button data-tool="hl" title="Highlighter (H)">🖍️</button>
       <button data-tool="erase" title="Eraser (E)">🧽</button>
       <button data-tool="sticky" title="Sticky note (S)">🗒️</button>
+      <button data-tool="listen" class="tts" title="Click any text to read aloud from there">👂</button>
       <input type="color" id="color" title="Colour">
     </div>
+    <button id="speak" class="tts" title="Read aloud from this page / stop (L)">🗣️</button>
+    <select id="rate" class="tts" title="Reading speed" aria-label="Reading speed">
+      <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+    </select>
+    <button id="sound" title="Page-turn sound on/off (M)">🔉</button>
     <button id="undo" title="Undo (Ctrl+Z)">↶</button>
     <button id="zoomOut" title="Zoom out">−</button>
     <button id="zoomIn" title="Zoom in">+</button>

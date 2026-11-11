@@ -1,10 +1,10 @@
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
 const $ = s => document.querySelector(s);
 const grid = $('#grid'), stage = $('#stage'), spread = $('#spread');
 
 // ---------- storage: IndexedDB. "files" = uploaded PDFs, "state" = page/ink/notes/bookmarks per book
 const dbp = new Promise((res, rej) => {
-  const r = indexedDB.open('shelf', 1);
+  const r = indexedDB.open('shelf', 1); // keep the old DB name: renaming it would orphan everyone's saved books & notes
   r.onupgradeneeded = () => ['files', 'state'].forEach(s => r.result.createObjectStore(s, { keyPath: 'id' }));
   r.onsuccess = () => res(r.result);
   r.onerror = () => rej(r.error);
@@ -35,6 +35,7 @@ async function renderCover(doc) {
 
 async function showLibrary() {
   $('#reader').hidden = true; $('#library').hidden = false;
+  stopSpeaking();
   if (pdf) { await save(); pdf.destroy(); pdf = null; }
   let bundled = [];
   try { bundled = await (await fetch('books/index.json')).json(); } catch {}
@@ -88,7 +89,7 @@ $('#upload').onchange = async e => {
 $('#exportBtn').onclick = async () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(await dbAll('state'))], { type: 'application/json' }));
-  a.download = `shelf-notes-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `dog-ear-notes-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
 };
 $('#importFile').onchange = async e => {
@@ -121,7 +122,7 @@ async function openBook(b) {
   aspect = v.width / v.height;
   st = (await dbGet('state', b.id)) || { id: b.id, page: 1, ink: {}, notes: {}, marks: [] };
   st.pages = pdf.numPages;
-  page = Math.min(st.page || 1, pdf.numPages); zoom = 1; undoStack = [];
+  page = Math.min(st.page || 1, pdf.numPages); zoom = 1; undoStack = []; textCache = new Map();
   $('#title').textContent = b.name;
   $('#seek').max = pdf.numPages;
   $('#notesPanel').hidden = true;
@@ -138,12 +139,15 @@ function spreadOf(p) {
   return l + 1 <= pdf.numPages ? [l, l + 1] : [l];
 }
 function go(p, dir = 0) {
+  if (dir) pageSound();
   page = Math.max(1, Math.min(pdf.numPages, p));
   st.page = page; saveSoon();
   render(dir);
 }
-const next = () => { const s = spreadOf(page); if (s.at(-1) < pdf.numPages) go(s.at(-1) + 1, 1); };
-const prev = () => { const s = spreadOf(page); if (s[0] > 1) go(s[0] - 1, -1); };
+// a page change by the reader; if read-aloud is on, it follows to the new page
+function turn(p, dir = 0) { go(p, dir); if (speaking) speakFrom(spreadOf(page)[0]); }
+const next = () => { const s = spreadOf(page); if (s.at(-1) < pdf.numPages) turn(s.at(-1) + 1, 1); };
+const prev = () => { const s = spreadOf(page); if (s[0] > 1) turn(s[0] - 1, -1); };
 
 async function render(dir = 0) {
   const id = ++renderId, nums = spreadOf(page), dpr = window.devicePixelRatio || 1;
@@ -155,21 +159,72 @@ async function render(dir = 0) {
     wrap.className = 'page'; wrap.dataset.n = n;
     wrap.style.width = vp.width + 'px'; wrap.style.height = vp.height + 'px';
     wrap.classList.toggle('marked', st.marks.includes(n));
-    wrap.innerHTML = '<canvas class="pdf"></canvas><canvas class="ink"></canvas><div class="notes"></div>';
+    wrap.innerHTML = '<canvas class="pdf"></canvas><canvas class="ink"></canvas><div class="speak"></div><div class="notes"></div>';
     for (const c of wrap.querySelectorAll('canvas')) { c.width = vp.width * dpr; c.height = vp.height * dpr; }
     await p.render({ canvasContext: wrap.firstChild.getContext('2d'), viewport: vp, transform: [dpr, 0, 0, dpr, 0, 0] }).promise;
     return wrap;
   }));
   if (id !== renderId) return; // a newer page turn won
+  flipping?.end(); // a turn while a page is still in the air: land it instantly
+  const old = [...spread.children];
+  if (pages.length === 2) { pages[0].classList.add('left'); pages[1].classList.add('right'); }
   pages.forEach(w => { drawInk(w); drawNotes(w); bindInk(w); });
-  spread.replaceChildren(...pages);
   spread.className = '';
-  if (dir) { void spread.offsetWidth; spread.className = dir > 0 ? 'turn-next' : 'turn-prev'; }
+  if (dir && zoom <= 1 && old.length === pages.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) flip(old, pages, dir);
+  else {
+    spread.replaceChildren(...pages);
+    // ponytail: cover→first spread and zoomed turns keep the simple slide; a flip there needs uneven-slot handling
+    if (dir) { void spread.offsetWidth; spread.className = dir > 0 ? 'turn-next' : 'turn-prev'; }
+  }
+  drawSpeak();
   stage.classList.toggle('zoomed', zoom > 1);
   $('#seek').value = page;
   $('#pageLabel').textContent = `Page ${nums.join('–')} of ${pdf.numPages} · ${Math.round((nums.at(-1) / pdf.numPages) * 100)}%`;
   $('#bookmark').classList.toggle('on', nums.some(n => st.marks.includes(n)));
 }
+// ---------- 3D page flip. The real page elements are moved onto the two faces of a turning sheet:
+// two-page view: the right page swings over the spine (its back is the new left page); single view: the sheet lifts away.
+const FLIP_MS = 650;
+let flipping = null;
+function flip(old, pages, dir) {
+  const two = pages.length === 2, blank = () => Object.assign(document.createElement('div'), { className: 'page sheet-back' });
+  let slots, front, back, from = 0, to = dir > 0 ? -180 : 180, origin = 'left', fade = false;
+  if (two) {
+    slots = dir > 0 ? [old[0], pages[1]] : [pages[0], old[1]];
+    [front, back] = dir > 0 ? [old[1], pages[0]] : [old[0], pages[1]];
+    if (dir < 0) origin = 'right';
+  } else if (dir > 0) { slots = [pages[0]]; front = old[0]; back = blank(); fade = 'out'; }
+  else { slots = [old[0]]; front = pages[0]; back = blank(); from = -180; to = 0; fade = 'in'; }
+  back.style.width = front.style.width; back.style.height = front.style.height;
+
+  spread.replaceChildren(...slots);
+  const slot = two ? slots[dir > 0 ? 1 : 0] : slots[0], w = parseFloat(front.style.width);
+  const sheet = document.createElement('div');
+  sheet.className = 'flip';
+  Object.assign(sheet.style, {
+    left: (origin === 'left' ? slot.offsetLeft : slot.offsetLeft + slot.offsetWidth - w) + 'px',
+    top: slot.offsetTop + 'px', width: front.style.width, height: front.style.height, transformOrigin: origin + ' center',
+  });
+  const face = (cls, el) => { const f = document.createElement('div'); f.className = 'face ' + cls; f.append(el); return f; };
+  sheet.append(face('front', front), face('back', back));
+  spread.append(sheet);
+
+  const rot = d => `perspective(2600px) rotateY(${d}deg)`, timing = { duration: FLIP_MS, easing: 'cubic-bezier(.35,.05,.25,1)' };
+  const anim = sheet.animate([{ transform: rot(from) }, { transform: rot(to) }], timing);
+  // single view: the sheet fades as it leaves (or arrives). Fade the faces, not the sheet:
+  // opacity on the 3D sheet itself would flatten it and show the front page mirrored.
+  if (fade) for (const f of sheet.children) f.animate(fade === 'out' ? [{ opacity: 1, offset: 0.7 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1, offset: 0.3 }], timing);
+  const end = () => {
+    if (flipping?.anim !== anim) return;
+    flipping = null;
+    anim.cancel();
+    spread.replaceChildren(...pages);
+    drawSpeak();
+  };
+  flipping = { anim, end };
+  anim.onfinish = end;
+}
+
 const refresh = n => { const w = spread.querySelector(`.page[data-n="${n}"]`); if (w) { drawInk(w); drawNotes(w); } };
 
 // ---------- ink (pen / highlighter / eraser). Points are stored 0..1 so they survive zoom & resize.
@@ -195,6 +250,7 @@ function bindInk(wrap) {
     if (tool === 'read' || e.button > 0) return;
     e.preventDefault(); e.stopPropagation();
     if (tool === 'sticky') return addNote(n, pt(e));
+    if (tool === 'listen') return listenAt(+n, pt(e));
     ink.setPointerCapture(e.pointerId);
     snap(n);
     if (tool === 'erase') { erasing = true; erase(n, pt(e), wrap); return; }
@@ -265,6 +321,165 @@ function stickyEl(n, note, wrap) {
   return el;
 }
 
+// ---------- page-turn sound, synthesized (Web Audio): a crinkly paper swish, then a soft landing.
+// Tuning knobs: change these if it sounds too loud, too bright or too slow on your speakers.
+const SOUND = { volume: 0.5, swish: 0.42, low: 900, high: 4200 };
+let actx, muted = false;
+try { muted = localStorage.muted === '1'; } catch {}
+
+function noise(ctx, secs, grain) { // white noise whose loudness jumps every few ms = paper crinkle
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * secs), ctx.sampleRate), d = buf.getChannelData(0);
+  let g = 1;
+  for (let i = 0; i < d.length; i++) {
+    if (i % grain === 0) g = 0.35 + Math.random() * 0.65;
+    d[i] = (Math.random() * 2 - 1) * g;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+function paperTurn(ctx, t = ctx.currentTime, out = ctx.destination) {
+  const dur = SOUND.swish * (0.85 + Math.random() * 0.3), v = SOUND.volume;
+  // the swish: band of noise sweeping up as the page lifts, back down as it falls
+  const s = noise(ctx, dur, 180 + Math.floor(Math.random() * 120));
+  const bp = ctx.createBiquadFilter(), env = ctx.createGain();
+  bp.type = 'bandpass'; bp.Q.value = 0.7;
+  bp.frequency.setValueAtTime(SOUND.low, t);
+  bp.frequency.exponentialRampToValueAtTime(SOUND.high, t + dur * 0.4);
+  bp.frequency.exponentialRampToValueAtTime(SOUND.low * 1.6, t + dur);
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(v, t + dur * 0.35);
+  env.gain.linearRampToValueAtTime(0, t + dur); // linear tail = the page keeps brushing as it falls
+  s.connect(bp).connect(env).connect(out);
+  s.start(t);
+  // the landing: short, dull flap as the page settles
+  const f = noise(ctx, 0.12, 60), lp = ctx.createBiquadFilter(), fe = ctx.createGain(), tl = t + dur * 0.8;
+  lp.type = 'lowpass'; lp.frequency.value = 700;
+  fe.gain.setValueAtTime(0.0001, tl);
+  fe.gain.exponentialRampToValueAtTime(v * 0.8, tl + 0.01);
+  fe.gain.exponentialRampToValueAtTime(0.0001, tl + 0.12);
+  f.connect(lp).connect(fe).connect(out);
+  f.start(tl);
+}
+
+function pageSound() {
+  if (muted) return;
+  try {
+    actx ||= new AudioContext();
+    if (actx.state === 'suspended') actx.resume();
+    paperTurn(actx);
+  } catch {} // no audio support: turning pages still works, just silently
+}
+
+function setMuted(m) {
+  muted = m;
+  $('#sound').textContent = m ? '🔇' : '🔉';
+  try { localStorage.muted = m ? '1' : '0'; } catch {}
+}
+setMuted(muted);
+$('#sound').onclick = () => setMuted(!muted);
+
+// ---------- read aloud: browser speech (Web Speech API) over the PDF's text layer.
+// Scanned/image-only PDFs have no text layer, so there is nothing to read (would need OCR).
+const tts = window.speechSynthesis;
+let textCache = new Map(), speaking = null, speakId = 0, rate = 1;
+try { rate = +(localStorage.rate || 1); } catch {}
+
+// Page text split into sentence-sized chunks (short utterances also dodge Chrome's ~15s cut-off),
+// each with the boxes of its words in 0..1 page coordinates for highlighting.
+async function chunksOf(n) {
+  if (textCache.has(n)) return textCache.get(n);
+  const p = await pdf.getPage(n), vp = p.getViewport({ scale: 1 }), { items } = await p.getTextContent();
+  const chunks = [];
+  let cur = { text: '', boxes: [] };
+  for (const it of items) {
+    if (it.str) {
+      const tx = pdfjsLib.Util.transform(vp.transform, it.transform), fh = Math.hypot(tx[2], tx[3]);
+      cur.boxes.push([tx[4] / vp.width, (tx[5] - fh) / vp.height, it.width / vp.width, (fh * 1.25) / vp.height]);
+      cur.text += it.str;
+    }
+    if (it.hasEOL) cur.text = cur.text.endsWith('-') ? cur.text.slice(0, -1) : cur.text + ' ';
+    if ((/[.!?]["'”’)\]]?\s*$/.test(cur.text) && cur.text.trim().length > 20) || cur.text.length > 250) {
+      chunks.push(cur);
+      cur = { text: '', boxes: [] };
+    }
+  }
+  chunks.push(cur);
+  const out = chunks.filter(c => c.text.trim() && !/^\d+$/.test(c.text.trim())); // skip blanks and bare page numbers
+  textCache.set(n, out);
+  return out;
+}
+
+const say = text => new Promise(res => {
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = rate;
+  u.onend = u.onerror = res;
+  tts.speak(u);
+});
+
+async function speakFrom(n, i = 0) {
+  if (!tts) return;
+  const id = ++speakId;
+  tts.cancel();
+  $('#speak').classList.add('on');
+  speaking = { n, i, boxes: [] };
+  for (let empty = 0; n <= pdf.numPages; n++, i = 0) {
+    const chunks = await chunksOf(n);
+    if (id !== speakId) return;
+    if (!chunks.length && ++empty >= 5) { stopSpeaking(); return alert("Can't find any text to read here. This PDF may be scanned images."); }
+    if (chunks.length) empty = 0;
+    for (; i < chunks.length; i++) {
+      speaking = { n, i, boxes: chunks[i].boxes };
+      if (!spreadOf(page).includes(n)) go(n, 1); else drawSpeak();
+      await say(chunks[i].text);
+      if (id !== speakId) return;
+    }
+  }
+  stopSpeaking();
+}
+
+function stopSpeaking() {
+  speakId++;
+  tts?.cancel();
+  speaking = null;
+  drawSpeak();
+  $('#speak').classList.remove('on');
+}
+
+function drawSpeak() {
+  for (const layer of spread.querySelectorAll('.speak')) {
+    const boxes = speaking?.n === +layer.parentNode.dataset.n ? speaking.boxes : [];
+    layer.replaceChildren(...boxes.map(([x, y, w, h]) => {
+      const b = document.createElement('i');
+      Object.assign(b.style, { left: x * 100 + '%', top: y * 100 + '%', width: w * 100 + '%', height: h * 100 + '%' });
+      return b;
+    }));
+  }
+}
+
+// start reading at the sentence nearest the click
+async function listenAt(n, [x, y]) {
+  const chunks = await chunksOf(n);
+  let best = 0, bestD = Infinity;
+  chunks.forEach((c, i) => c.boxes.forEach(([bx, by, bw, bh]) => {
+    const d = Math.hypot(Math.max(bx - x, 0, x - bx - bw), Math.max(by - y, 0, y - by - bh));
+    if (d < bestD) { bestD = d; best = i; }
+  }));
+  speakFrom(n, best);
+}
+
+const toggleSpeak = () => (speaking ? stopSpeaking() : speakFrom(spreadOf(page)[0]));
+if (tts) {
+  $('#speak').onclick = toggleSpeak;
+  $('#rate').value = String(rate);
+  $('#rate').onchange = e => {
+    rate = +e.target.value;
+    try { localStorage.rate = rate; } catch {}
+    if (speaking) speakFrom(speaking.n, speaking.i); // restart the current sentence at the new speed
+  };
+} else document.querySelectorAll('.tts').forEach(el => (el.hidden = true));
+
 // ---------- tools & controls
 function setTool(t) {
   tool = t; stage.dataset.tool = t;
@@ -279,7 +494,7 @@ $('#back').onclick = showLibrary;
 $('#undo').onclick = undo;
 $('#zoomIn').onclick = () => { zoom = Math.min(4, zoom * 1.25); render(); };
 $('#zoomOut').onclick = () => { zoom = Math.max(0.5, zoom / 1.25); render(); };
-$('#seek').onchange = e => go(+e.target.value);
+$('#seek').onchange = e => turn(+e.target.value);
 $('#notesBtn').onclick = toggleNotes;
 $('#bookmark').onclick = () => {
   const nums = spreadOf(page), marked = nums.filter(n => st.marks.includes(n));
@@ -301,7 +516,7 @@ function toggleNotes() {
   for (const [n, text] of items) {
     const b = document.createElement('button');
     b.innerHTML = `<b>p. ${n}</b>  `; b.append(text);
-    b.onclick = () => { panel.hidden = true; go(n); };
+    b.onclick = () => { panel.hidden = true; turn(n); };
     panel.append(b);
   }
   panel.hidden = false;
@@ -327,7 +542,8 @@ document.onkeydown = e => {
   const act = {
     ArrowRight: next, ArrowLeft: prev, PageDown: next, PageUp: prev, ' ': next,
     r: () => setTool('read'), p: () => setTool('pen'), h: () => setTool('hl'), e: () => setTool('erase'), s: () => setTool('sticky'),
-    b: () => $('#bookmark').click(), n: toggleNotes, Escape: () => { setTool('read'); $('#notesPanel').hidden = true; },
+    b: () => $('#bookmark').click(), n: toggleNotes, l: () => tts && toggleSpeak(), m: () => setMuted(!muted),
+    Escape: () => { setTool('read'); stopSpeaking(); $('#notesPanel').hidden = true; },
   }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
   if (act) { e.preventDefault(); act(); }
 };

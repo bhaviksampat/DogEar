@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DogEar</AssemblyName>
+    <Product>Dog-Ear</Product>
+    <Version>1.0.0</Version>
+    <!-- WebView2's package also ships a WPF control we don't use; its WindowsBase reference warning is harmless -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <!-- `dotnet publish -c Release -o publish` => one DogEar.exe (+ web\ folder) that runs on any 64-bit Windows 10/11 PC, no .NET install needed -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2849.39" />
+  </ItemGroup>
+
+  <!-- The app runs the exact same web code as the website: copied from the repo root into "web\" at build time. -->
+  <ItemGroup>
+    <Content Include="..\..\index.html;..\..\app.js;..\..\style.css" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\books\**\*" LinkBase="web\books" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\vendor\**\*" LinkBase="web\vendor" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
